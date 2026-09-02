@@ -36,6 +36,7 @@ mod tests {
 }
 
 mod data;
+mod extension;
 mod go_away;
 mod head;
 mod headers;
@@ -49,6 +50,7 @@ mod util;
 mod window_update;
 
 pub use self::data::Data;
+pub use self::extension::Extension;
 pub use self::go_away::GoAway;
 pub use self::head::{Head, Kind};
 pub use self::headers::{
@@ -87,6 +89,7 @@ pub enum Frame<T = Bytes> {
     GoAway(GoAway),
     WindowUpdate(WindowUpdate),
     Reset(Reset),
+    Extension(Extension),
 }
 
 impl<T> Frame<T> {
@@ -106,6 +109,7 @@ impl<T> Frame<T> {
             GoAway(frame) => frame.into(),
             WindowUpdate(frame) => frame.into(),
             Reset(frame) => frame.into(),
+            Extension(frame) => frame.into(),
         }
     }
 }
@@ -124,6 +128,7 @@ impl<T> fmt::Debug for Frame<T> {
             GoAway(ref frame) => fmt::Debug::fmt(frame, fmt),
             WindowUpdate(ref frame) => fmt::Debug::fmt(frame, fmt),
             Reset(ref frame) => fmt::Debug::fmt(frame, fmt),
+            Extension(ref frame) => fmt::Debug::fmt(frame, fmt),
         }
     }
 }

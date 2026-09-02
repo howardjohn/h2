@@ -2,6 +2,7 @@ use crate::Reason;
 
 use super::*;
 
+use std::collections::VecDeque;
 use std::fmt;
 use std::task::{Context, Waker};
 use std::time::Instant;
@@ -99,6 +100,7 @@ pub(super) struct Stream {
 
     /// Frames pending for this stream to read
     pub pending_recv: buffer::Deque,
+    pub pending_recv_extensions: VecDeque<frame::Extension>,
 
     /// When the RecvStream drop occurs, no data should be received.
     pub is_recv: bool,
@@ -189,6 +191,7 @@ impl Stream {
             reset_at: None,
             next_reset_expire: None,
             pending_recv: buffer::Deque::new(),
+            pending_recv_extensions: VecDeque::new(),
             is_recv: true,
             recv_task: None,
             push_task: None,

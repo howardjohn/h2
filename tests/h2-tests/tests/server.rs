@@ -181,6 +181,98 @@ async fn serve_connect() {
 }
 
 #[tokio::test]
+async fn serve_connect_with_metadata_extension_frame() {
+    h2_support::trace_init!();
+    let (io, mut client) = mock::new();
+
+    let client = async move {
+        let settings = client.assert_server_handshake().await;
+        assert_default_settings!(settings);
+        client
+            .send_frame(frames::headers(1).request("CONNECT", "localhost"))
+            .await;
+        client
+            .send_bytes(&[
+                0, 0, 11, 0x4d, 0x04, 0, 0, 0, 1, 0x00, 0x07, b'c', b'h', b'a', b'n', b'g', b'e',
+                b'd', 0x01, 0x01,
+            ])
+            .await;
+        client.send_frame(frames::data(1, b"hello").eos()).await;
+        client
+            .recv_frame(frames::headers(1).response(200).eos())
+            .await;
+    };
+
+    let srv = async move {
+        let mut srv = server::Builder::new()
+            .enable_extension_frames(true)
+            .handshake::<_, Bytes>(io)
+            .await
+            .expect("handshake");
+        let (req, mut stream) = srv.next().await.unwrap().unwrap();
+        let mut body = req.into_body();
+
+        // Extension frames do not interrupt the ordinary DATA queue.
+        assert_eq!(body.data().await.unwrap().unwrap(), &b"hello"[..]);
+
+        let extension = body.extension().await.unwrap().unwrap();
+        assert_eq!(extension.frame_type(), 0x4d);
+        assert_eq!(extension.flags(), 0x04);
+        assert_eq!(extension.stream_id().as_u32(), 1);
+        assert_eq!(extension.payload(), &b"\x00\x07changed\x01\x01"[..]);
+        assert!(body.is_end_stream());
+
+        let rsp = http::Response::builder().status(200).body(()).unwrap();
+        stream.send_response(rsp, true).unwrap();
+
+        assert!(srv.next().await.is_none());
+    };
+
+    join(client, srv).await;
+}
+
+#[tokio::test]
+async fn serve_connect_ignores_metadata_extension_frame_by_default() {
+    h2_support::trace_init!();
+    let (io, mut client) = mock::new();
+
+    let client = async move {
+        let settings = client.assert_server_handshake().await;
+        assert_default_settings!(settings);
+        client
+            .send_frame(frames::headers(1).request("CONNECT", "localhost"))
+            .await;
+        client
+            .send_bytes(&[
+                0, 0, 11, 0x4d, 0x04, 0, 0, 0, 1, 0x00, 0x07, b'c', b'h', b'a', b'n', b'g', b'e',
+                b'd', 0x01, 0x01,
+            ])
+            .await;
+        client.send_frame(frames::data(1, b"hello").eos()).await;
+        client
+            .recv_frame(frames::headers(1).response(200).eos())
+            .await;
+    };
+
+    let srv = async move {
+        let mut srv = server::handshake(io).await.expect("handshake");
+        let (req, mut stream) = srv.next().await.unwrap().unwrap();
+        let mut body = req.into_body();
+
+        assert_eq!(body.data().await.unwrap().unwrap(), &b"hello"[..]);
+        assert!(body.is_end_stream());
+        assert!(body.extension().await.is_none());
+
+        let rsp = http::Response::builder().status(200).body(()).unwrap();
+        stream.send_response(rsp, true).unwrap();
+
+        assert!(srv.next().await.is_none());
+    };
+
+    join(client, srv).await;
+}
+
+#[tokio::test]
 async fn push_request() {
     h2_support::trace_init!();
     let (io, mut client) = mock::new();

@@ -22,7 +22,7 @@ pub enum Kind {
     GoAway = 7,
     WindowUpdate = 8,
     Continuation = 9,
-    Unknown,
+    Unknown(u8),
 }
 
 // ===== impl Head =====
@@ -67,7 +67,7 @@ impl Head {
         debug_assert!(self.encode_len() <= dst.remaining_mut());
 
         dst.put_uint(payload_len as u64, 3);
-        dst.put_u8(self.kind as u8);
+        dst.put_u8(self.kind.as_u8());
         dst.put_u8(self.flag);
         dst.put_u32(self.stream_id.into());
     }
@@ -88,7 +88,23 @@ impl Kind {
             7 => Kind::GoAway,
             8 => Kind::WindowUpdate,
             9 => Kind::Continuation,
-            _ => Kind::Unknown,
+            value => Kind::Unknown(value),
+        }
+    }
+
+    pub fn as_u8(self) -> u8 {
+        match self {
+            Kind::Data => 0,
+            Kind::Headers => 1,
+            Kind::Priority => 2,
+            Kind::Reset => 3,
+            Kind::Settings => 4,
+            Kind::PushPromise => 5,
+            Kind::Ping => 6,
+            Kind::GoAway => 7,
+            Kind::WindowUpdate => 8,
+            Kind::Continuation => 9,
+            Kind::Unknown(value) => value,
         }
     }
 }

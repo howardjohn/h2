@@ -63,6 +63,24 @@ async fn read_data_end_stream() {
 }
 
 #[tokio::test]
+async fn read_metadata_as_extension() {
+    let mut codec = raw_codec! {
+        read => [
+            0, 0, 11, 0x4d, 0x04, 0, 0, 0, 1,
+            "\x00\x07changed\x01\x01",
+        ];
+    };
+
+    let extension = poll_frame!(Extension, codec);
+    assert_eq!(extension.frame_type(), 0x4d);
+    assert_eq!(extension.flags(), 0x04);
+    assert_eq!(extension.stream_id().as_u32(), 1);
+    assert_eq!(extension.payload(), &b"\x00\x07changed\x01\x01"[..]);
+
+    assert_closed!(codec);
+}
+
+#[tokio::test]
 async fn read_data_padding() {
     let mut codec = raw_codec! {
         read => [

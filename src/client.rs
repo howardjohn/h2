@@ -343,6 +343,9 @@ pub struct Builder {
     ///
     /// When this gets exceeded, we issue GOAWAYs.
     local_max_error_reset_streams: Option<usize>,
+
+    /// Whether unknown extension frames should be exposed on receive streams.
+    enable_extension_frames: bool,
 }
 
 #[derive(Debug)]
@@ -663,7 +666,17 @@ impl Builder {
             settings: Default::default(),
             stream_id: 1.into(),
             local_max_error_reset_streams: Some(proto::DEFAULT_LOCAL_RESET_COUNT_MAX),
+            enable_extension_frames: false,
         }
+    }
+
+    /// Configures whether unknown HTTP/2 extension frames are exposed through
+    /// [`RecvStream::poll_extension`](crate::RecvStream::poll_extension).
+    ///
+    /// This is disabled by default, causing unknown frame types to be ignored.
+    pub fn enable_extension_frames(&mut self, enabled: bool) -> &mut Self {
+        self.enable_extension_frames = enabled;
+        self
     }
 
     /// Indicates the initial window size (in octets) for stream-level
@@ -1334,6 +1347,7 @@ where
                 reset_stream_max: builder.reset_stream_max,
                 remote_reset_stream_max: builder.pending_accept_reset_stream_max,
                 local_error_reset_streams_max: builder.local_max_error_reset_streams,
+                enable_extension_frames: builder.enable_extension_frames,
                 settings: builder.settings,
             },
         );

@@ -59,6 +59,9 @@ pub(super) struct Recv {
 
     /// If extended connect protocol is enabled.
     is_extended_connect_protocol_enabled: bool,
+
+    /// If unknown extension frames should be exposed to users.
+    enable_extension_frames: bool,
 }
 
 #[derive(Debug)]
@@ -68,6 +71,9 @@ pub(super) enum Event {
     Trailers(HeaderMap),
     InformationalHeaders(peer::PollMessage),
 }
+
+const MAX_BUFFERED_EXTENSION_FRAMES: usize = 16;
+const MAX_BUFFERED_EXTENSION_BYTES: usize = 64 * 1024;
 
 #[derive(Debug)]
 pub(super) enum RecvHeaderBlockError<T> {
@@ -108,6 +114,7 @@ impl Recv {
             refused: None,
             is_push_enabled: config.local_push_enabled,
             is_extended_connect_protocol_enabled: config.extended_connect_protocol_enabled,
+            enable_extension_frames: config.enable_extension_frames,
         }
     }
 
@@ -759,6 +766,33 @@ impl Recv {
         Ok(())
     }
 
+    pub fn recv_extension(&mut self, frame: frame::Extension, stream: &mut store::Ptr) {
+        if !self.enable_extension_frames || !stream.is_recv {
+            return;
+        }
+
+        let buffered_bytes: usize = stream
+            .pending_recv_extensions
+            .iter()
+            .map(|frame| frame.payload().len())
+            .sum();
+
+        if stream.pending_recv_extensions.len() >= MAX_BUFFERED_EXTENSION_FRAMES
+            || frame.payload().len() > MAX_BUFFERED_EXTENSION_BYTES
+            || buffered_bytes + frame.payload().len() > MAX_BUFFERED_EXTENSION_BYTES
+        {
+            tracing::trace!(
+                stream = ?stream.id,
+                frame_type = frame.frame_type(),
+                "dropping extension frame because the receive buffer is full"
+            );
+            return;
+        }
+
+        stream.pending_recv_extensions.push_back(frame);
+        stream.notify_recv();
+    }
+
     pub fn ignore_data(&mut self, sz: WindowSize) -> Result<(), Error> {
         // Ensure that there is enough capacity on the connection...
         self.consume_connection_window(sz)?;
@@ -937,6 +971,7 @@ impl Recv {
         while stream.pending_recv.pop_front(&mut self.buffer).is_some() {
             // drop it
         }
+        stream.pending_recv_extensions.clear();
     }
 
     /// Get the max ID of streams we can receive.
@@ -1210,6 +1245,17 @@ impl Recv {
                 // No more data frames
                 Poll::Ready(None)
             }
+            None => self.schedule_recv(cx, stream),
+        }
+    }
+
+    pub fn poll_extension(
+        &mut self,
+        cx: &Context,
+        stream: &mut Stream,
+    ) -> Poll<Option<Result<frame::Extension, proto::Error>>> {
+        match stream.pending_recv_extensions.pop_front() {
+            Some(frame) => Poll::Ready(Some(Ok(frame))),
             None => self.schedule_recv(cx, stream),
         }
     }

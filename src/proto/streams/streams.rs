@@ -352,6 +352,11 @@ impl<B> DynStreams<'_, B> {
         me.recv_data(self.peer, self.send_buffer, frame)
     }
 
+    pub fn recv_extension(&mut self, frame: frame::Extension) {
+        let mut me = self.inner.lock().unwrap();
+        me.recv_extension(frame)
+    }
+
     pub fn recv_reset(&mut self, frame: frame::Reset) -> Result<(), Error> {
         let mut me = self.inner.lock().unwrap();
 
@@ -606,6 +611,20 @@ impl Inner {
             }
             actions.reset_on_recv_stream_err(send_buffer, stream, counts, res)
         })
+    }
+
+    fn recv_extension(&mut self, frame: frame::Extension) {
+        let id = frame.internal_stream_id();
+
+        if id.is_zero() {
+            return;
+        }
+
+        let Some(mut stream) = self.store.find_mut(&id) else {
+            return;
+        };
+
+        self.actions.recv.recv_extension(frame, &mut stream);
     }
 
     fn recv_reset<B>(
@@ -1443,6 +1462,18 @@ impl OpaqueStreamRef {
         let mut stream = me.store.resolve(self.key);
 
         me.actions.recv.poll_data(cx, &mut stream)
+    }
+
+    pub fn poll_extension(
+        &mut self,
+        cx: &Context,
+    ) -> Poll<Option<Result<frame::Extension, proto::Error>>> {
+        let mut me = self.inner.lock().unwrap();
+        let me = &mut *me;
+
+        let mut stream = me.store.resolve(self.key);
+
+        me.actions.recv.poll_extension(cx, &mut stream)
     }
 
     pub fn poll_trailers(&mut self, cx: &Context) -> Poll<Option<Result<HeaderMap, proto::Error>>> {

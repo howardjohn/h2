@@ -51,6 +51,9 @@ pub struct Config {
     /// If extended connect protocol is enabled.
     pub extended_connect_protocol_enabled: bool,
 
+    /// If unknown extension frames should be exposed to users.
+    pub enable_extension_frames: bool,
+
     /// How long a locally reset stream should ignore frames
     pub local_reset_duration: Duration,
 

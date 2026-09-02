@@ -374,9 +374,9 @@ fn decode_frame(
                 return Ok(None);
             }
         }
-        Kind::Unknown => {
-            // Unknown frames are ignored
-            return Ok(None);
+        Kind::Unknown(_) => {
+            bytes.advance(frame::HEADER_LEN);
+            frame::Extension::load(head, bytes.freeze()).into()
         }
     };
 

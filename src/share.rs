@@ -1,5 +1,5 @@
 use crate::codec::UserError;
-use crate::frame::Reason;
+use crate::frame::{Extension, Reason};
 use crate::proto::{self, WindowSize};
 
 use bytes::{Buf, Bytes};
@@ -413,6 +413,13 @@ impl RecvStream {
         crate::poll_fn(move |cx| self.poll_data(cx)).await
     }
 
+    /// Get the next HTTP/2 extension frame for this stream.
+    ///
+    /// Extension frames must first be enabled on the client or server builder.
+    pub async fn extension(&mut self) -> Option<Result<Extension, crate::Error>> {
+        crate::poll_fn(move |cx| self.poll_extension(cx)).await
+    }
+
     /// Get optional trailers for this stream.
     pub async fn trailers(&mut self) -> Result<Option<HeaderMap>, crate::Error> {
         crate::poll_fn(move |cx| self.poll_trailers(cx)).await
@@ -421,6 +428,16 @@ impl RecvStream {
     /// Poll for the next data frame.
     pub fn poll_data(&mut self, cx: &mut Context<'_>) -> Poll<Option<Result<Bytes, crate::Error>>> {
         self.inner.inner.poll_data(cx).map_err(Into::into)
+    }
+
+    /// Poll for the next HTTP/2 extension frame for this stream.
+    ///
+    /// Extension frames must first be enabled on the client or server builder.
+    pub fn poll_extension(
+        &mut self,
+        cx: &mut Context<'_>,
+    ) -> Poll<Option<Result<Extension, crate::Error>>> {
+        self.inner.inner.poll_extension(cx).map_err(Into::into)
     }
 
     #[doc(hidden)]

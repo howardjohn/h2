@@ -82,6 +82,7 @@ pub(crate) struct Config {
     pub reset_stream_max: usize,
     pub remote_reset_stream_max: usize,
     pub local_error_reset_streams_max: Option<usize>,
+    pub enable_extension_frames: bool,
     pub settings: frame::Settings,
 }
 
@@ -123,6 +124,7 @@ where
                     .max_concurrent_streams()
                     .map(|max| max as usize),
                 local_max_error_reset_streams: config.local_error_reset_streams_max,
+                enable_extension_frames: config.enable_extension_frames,
             }
         }
         let streams = Streams::new(streams_config(&config));
@@ -567,6 +569,10 @@ where
             Some(Priority(frame)) => {
                 tracing::trace!(?frame, "recv PRIORITY");
                 // TODO: handle
+            }
+            Some(Extension(frame)) => {
+                tracing::trace!(?frame, "recv extension frame");
+                self.streams.recv_extension(frame);
             }
             None => {
                 tracing::trace!("codec closed");
