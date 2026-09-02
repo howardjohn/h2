@@ -309,6 +309,26 @@ impl Send {
             .send_data(frame, buffer, stream, counts, task)
     }
 
+    pub fn send_extension<B>(
+        &mut self,
+        frame: frame::Extension,
+        buffer: &mut Buffer<Frame<B>>,
+        stream: &mut store::Ptr,
+        task: &mut Option<Waker>,
+    ) -> Result<(), UserError>
+    where
+        B: Buf,
+    {
+        if !stream.state.is_send_streaming() {
+            return Err(UserError::UnexpectedFrameType);
+        }
+
+        self.prioritize
+            .queue_frame(frame.into(), buffer, stream, task);
+
+        Ok(())
+    }
+
     pub fn send_trailers<B>(
         &mut self,
         frame: frame::Headers,

@@ -98,6 +98,16 @@ pub struct SendStream<B> {
     inner: proto::StreamRef<B>,
 }
 
+/// A cloneable handle for sending extension frames on a stream.
+///
+/// Unlike [`SendStream`], this handle cannot send DATA, trailers, resets, or
+/// close the stream. This allows an extension frame to be queued concurrently
+/// while another task owns the stream's DATA sender.
+#[derive(Debug)]
+pub struct ExtensionSender<B> {
+    inner: proto::StreamRef<B>,
+}
+
 /// A stream identifier, as described in [Section 5.1.1] of RFC 7540.
 ///
 /// Streams are identified with an unsigned 31-bit integer. Streams
@@ -222,6 +232,29 @@ pub struct Pong {
 impl<B: Buf> SendStream<B> {
     pub(crate) fn new(inner: proto::StreamRef<B>) -> Self {
         SendStream { inner }
+    }
+
+    /// Returns a cloneable handle that can only send extension frames.
+    pub fn extension_sender(&self) -> ExtensionSender<B> {
+        ExtensionSender {
+            inner: self.inner.clone(),
+        }
+    }
+
+    /// Sends an HTTP/2 extension frame on this stream.
+    ///
+    /// The frame type must not be one of the built-in HTTP/2 frame types, and
+    /// the payload must not exceed 16,384 bytes. Extension frames do not use
+    /// flow-control capacity and do not change the stream state.
+    pub fn send_extension(
+        &mut self,
+        frame_type: u8,
+        flags: u8,
+        payload: Bytes,
+    ) -> Result<(), crate::Error> {
+        self.inner
+            .send_extension(frame_type, flags, payload)
+            .map_err(Into::into)
     }
 
     /// Requests capacity to send data.
@@ -379,6 +412,32 @@ impl<B: Buf> SendStream<B> {
     /// If the lock on the stream store has been poisoned.
     pub fn stream_id(&self) -> StreamId {
         StreamId::from_internal(self.inner.stream_id())
+    }
+}
+
+impl<B> Clone for ExtensionSender<B> {
+    fn clone(&self) -> Self {
+        ExtensionSender {
+            inner: self.inner.clone(),
+        }
+    }
+}
+
+impl<B: Buf> ExtensionSender<B> {
+    /// Sends an HTTP/2 extension frame on this stream.
+    ///
+    /// The frame type must not be one of the built-in HTTP/2 frame types, and
+    /// the payload must not exceed 16,384 bytes. Extension frames do not use
+    /// flow-control capacity and do not change the stream state.
+    pub fn send_extension(
+        &self,
+        frame_type: u8,
+        flags: u8,
+        payload: Bytes,
+    ) -> Result<(), crate::Error> {
+        self.inner
+            .send_extension(frame_type, flags, payload)
+            .map_err(Into::into)
     }
 }
 

@@ -296,6 +296,9 @@ where
                 tracing::trace!(rem = self.buf.remaining(), "encoded reset");
             }
             Frame::Extension(v) => {
+                if v.payload().len() > self.max_frame_size() {
+                    return Err(PayloadTooBig);
+                }
                 v.encode(self.buf.get_mut());
                 tracing::trace!(rem = self.buf.remaining(), "encoded extension");
             }

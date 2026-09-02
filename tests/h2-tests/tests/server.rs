@@ -273,6 +273,55 @@ async fn serve_connect_ignores_metadata_extension_frame_by_default() {
 }
 
 #[tokio::test]
+async fn serve_connect_sends_extension_frame() {
+    h2_support::trace_init!();
+    let (io, mut client) = mock::new();
+
+    let client = async move {
+        let settings = client.assert_server_handshake().await;
+        assert_default_settings!(settings);
+        client
+            .send_frame(frames::headers(1).request("CONNECT", "localhost"))
+            .await;
+        client.recv_frame(frames::headers(1).response(200)).await;
+
+        let extension = match client.next().await.unwrap().unwrap() {
+            frame::Frame::Extension(extension) => extension,
+            frame => panic!("expected extension frame, got {:?}", frame),
+        };
+        assert_eq!(extension.frame_type(), 0x4d);
+        assert_eq!(extension.flags(), 0x04);
+        assert_eq!(extension.stream_id().as_u32(), 1);
+        assert_eq!(extension.payload(), &b"\x00\x07changed\x01\x01"[..]);
+
+        client.recv_frame(frames::data(1, b"done").eos()).await;
+    };
+
+    let srv = async move {
+        let mut srv = server::handshake(io).await.expect("handshake");
+        let (_, mut stream) = srv.next().await.unwrap().unwrap();
+
+        let rsp = http::Response::builder().status(200).body(()).unwrap();
+        let mut body = stream.send_response(rsp, false).unwrap();
+        let extensions = body.extension_sender();
+
+        assert!(extensions.send_extension(0x00, 0x00, Bytes::new()).is_err());
+        assert!(extensions
+            .send_extension(0x4d, 0x04, Bytes::from(vec![0; 16_385]))
+            .is_err());
+        extensions
+            .send_extension(0x4d, 0x04, Bytes::from_static(b"\x00\x07changed\x01\x01"))
+            .unwrap();
+        body.send_data(Bytes::from_static(b"done"), true).unwrap();
+        assert!(extensions.send_extension(0x4d, 0x04, Bytes::new()).is_err());
+
+        assert!(srv.next().await.is_none());
+    };
+
+    join(client, srv).await;
+}
+
+#[tokio::test]
 async fn push_request() {
     h2_support::trace_init!();
     let (io, mut client) = mock::new();

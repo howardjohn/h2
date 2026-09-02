@@ -11,6 +11,24 @@ pub struct Extension {
 }
 
 impl Extension {
+    pub(crate) fn new(
+        frame_type: u8,
+        flags: u8,
+        stream_id: StreamId,
+        payload: Bytes,
+    ) -> Option<Extension> {
+        if !matches!(Kind::new(frame_type), Kind::Unknown(_)) {
+            return None;
+        }
+
+        Some(Extension {
+            frame_type,
+            flags,
+            stream_id,
+            payload,
+        })
+    }
+
     pub(crate) fn load(head: Head, payload: Bytes) -> Extension {
         let Kind::Unknown(frame_type) = head.kind() else {
             unreachable!("extension frame must have an unknown type");

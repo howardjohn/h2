@@ -1124,6 +1124,32 @@ where
 // ===== impl StreamRef =====
 
 impl<B> StreamRef<B> {
+    pub fn send_extension(&self, frame_type: u8, flags: u8, payload: Bytes) -> Result<(), UserError>
+    where
+        B: Buf,
+    {
+        if payload.len() > frame::DEFAULT_MAX_FRAME_SIZE as usize {
+            return Err(UserError::PayloadTooBig);
+        }
+
+        let mut me = self.opaque.inner.lock().unwrap();
+        let me = &mut *me;
+
+        let stream = me.store.resolve(self.opaque.key);
+        let Some(frame) = frame::Extension::new(frame_type, flags, stream.id, payload) else {
+            return Err(UserError::UnexpectedFrameType);
+        };
+        let actions = &mut me.actions;
+        let mut send_buffer = self.send_buffer.inner.lock().unwrap();
+        let send_buffer = &mut *send_buffer;
+
+        me.counts.transition(stream, |_, stream| {
+            actions
+                .send
+                .send_extension(frame, send_buffer, stream, &mut actions.task)
+        })
+    }
+
     pub fn send_data(&mut self, data: B, end_stream: bool) -> Result<(), UserError>
     where
         B: Buf,
